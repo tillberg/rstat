@@ -116,7 +116,7 @@ func main() {
 	leftPad := []bool{false, true, true, true}
 	// for i := len(interesting) - 1; i >= 0; i-- {
 	for i := 0; i < len(interesting); i++ {
-		rows = append(rows, formatSummary(interesting[i], rootAgg, sc))
+		rows = append(rows, formatSummary(actualRoot, interesting[i], rootAgg, sc))
 	}
 	for _, row := range rows {
 		for i, col := range row {
@@ -230,16 +230,20 @@ var (
 	numFormat       = alog.Colorify(" @(cyan:%s)      ")
 )
 
-func formatSummary(agg *aggregator, root *aggregator, sc *scoreComputer) []string {
+func formatSummary(actualRoot string, agg *aggregator, root *aggregator, sc *scoreComputer) []string {
 	if agg.errors != 0 {
 		alog.Printf("@(warn:Encountered %d errors within %q. First error: %v)\n", agg.errors, agg.path, agg.firstErr)
 	}
 	totalScore := sc.computeScore(agg)
+	pathStr, err := filepath.Rel(actualRoot, agg.path)
+	if err != nil {
+		pathStr = agg.path
+	}
 	var parts []string
 	if agg == root {
-		parts = append(parts, fmt.Sprintf(pathFormatTotal, agg.path))
+		parts = append(parts, fmt.Sprintf(pathFormatTotal, pathStr))
 	} else {
-		parts = append(parts, fmt.Sprintf(pathFormat, agg.path))
+		parts = append(parts, fmt.Sprintf(pathFormat, pathStr))
 	}
 	appendStats := func(numFormatter func(int64) string, aggNum, rootNum, normNum int64) {
 		scorePart := float64(aggNum) / float64(normNum)
