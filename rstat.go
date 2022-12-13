@@ -8,17 +8,40 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jessevdk/go-flags"
+	ignore "github.com/sabhiram/go-gitignore"
 	"github.com/tillberg/alog"
 )
 
+var Opts struct {
+	Ignores    bool `long:"ignores"`
+	GitIgnores bool `long:"gitignores"`
+}
+
 func main() {
+	posArgs, err := flags.Parse(&Opts)
+	if err != nil {
+		err2, ok := err.(*flags.Error)
+		if ok && err2.Type == flags.ErrHelp {
+			return
+		}
+		alog.Printf("Error parsing command-line options: %s\n", err)
+		return
+	}
+	var ignoreFiles []string
+	if Opts.Ignores {
+		ignoreFiles = append(ignoreFiles, ".ignore")
+	}
+	if Opts.GitIgnores {
+		ignoreFiles = append(ignoreFiles, ".gitignore")
+	}
 	alog.SetPrefix("")
 	root, err := os.Getwd()
 	alog.BailIf(err)
 	// actualRoot preserves specified / suffixes in order to correctly resolve a root symlink
 	actualRoot := filepath.Clean(root)
-	if len(os.Args) > 1 {
-		specPath := os.Args[1]
+	if len(posArgs) > 0 {
+		specPath := posArgs[0]
 		if filepath.IsAbs(specPath) {
 			root = specPath
 		} else {
@@ -32,10 +55,32 @@ func main() {
 	}
 	cumDir := map[string]*aggregator{}
 	// selfDir := map[string]*agg{}
+	ignores := &Ignores{Specs: NewDirIgnores()}
+	addIgnores := func(dir string) {
+		for _, ignoreFileName := range ignoreFiles {
+			ignorePath := filepath.Join(dir, ignoreFileName)
+			ignoreFile, err := ignore.CompileIgnoreFile(ignorePath)
+			if err == nil {
+				// alog.Printf("Ignoring from %s\n", ignorePath)
+				ignores.AddIgnoreAtDir(dir, ignoreFile)
+			}
+		}
+	}
 	err = filepath.Walk(actualRoot, func(path string, info os.FileInfo, err error) error {
+		if ignores.Ignore(path) {
+			// alog.Printf("Ignoring %s\n", path)
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		cumPath := path
-		if err == nil && info.IsDir() == false {
-			cumPath = filepath.Dir(cumPath)
+		if err == nil {
+			if info.IsDir() {
+				addIgnores(path)
+			} else {
+				cumPath = filepath.Dir(cumPath)
+			}
 		}
 		for {
 			agg, ok := cumDir[cumPath]
